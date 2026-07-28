@@ -1,4 +1,4 @@
-// This file is part of midnightntwrk/example-bboard.
+// This file is part of midnightntwrk/notetaker.
 // Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,17 +14,17 @@
 // limitations under the License.
 
 /**
- * Bulletin board common types and abstractions.
+ * Notetaker common types and abstractions.
  *
  * @module
  */
 
 import { type MidnightProviders } from '@midnight-ntwrk/midnight-js-types';
 import { type FoundContract } from '@midnight-ntwrk/midnight-js-contracts';
-import type { State, BBoardPrivateState, Contract, Witnesses } from '../../contract/src/index';
+import type { NoteStatus, NotetakerPrivateState, Contract, Witnesses } from '../../contract/src/index';
 
-export const bboardPrivateStateKey = 'bboardPrivateState';
-export type PrivateStateId = typeof bboardPrivateStateKey;
+export const notetakerPrivateStateKey = 'notetakerPrivateState';
+export type PrivateStateId = typeof notetakerPrivateStateKey;
 
 /**
  * The private states consumed throughout the application.
@@ -33,67 +33,64 @@ export type PrivateStateId = typeof bboardPrivateStateKey;
  * {@link PrivateStates} can be thought of as a type that describes a schema for all
  * private states for all contracts used in the application. Each key represents
  * the type of private state consumed by a particular type of contract.
- * The key is used by the deployed contract when interacting with a private state provider,
- * and the type (i.e., `typeof PrivateStates[K]`) represents the type of private state
- * expected to be returned.
- *
- * Since there is only one contract type for the bulletin board example, we only define a
- * single key/type in the schema.
  *
  * @public
  */
 export type PrivateStates = {
   /**
-   * Key used to provide the private state for {@link BBoardContract} deployments.
+   * Key used to provide the private state for {@link NotetakerContract} deployments.
    */
-  readonly bboardPrivateState: BBoardPrivateState;
+  readonly notetakerPrivateState: NotetakerPrivateState;
 };
 
 /**
- * Represents a bulletin board contract and its private state.
+ * Represents a notetaker contract and its private state.
  *
  * @public
  */
-export type BBoardContract = Contract<BBoardPrivateState, Witnesses<BBoardPrivateState>>;
+export type NotetakerContract = Contract<NotetakerPrivateState, Witnesses<NotetakerPrivateState>>;
 
 /**
- * The keys of the circuits exported from {@link BBoardContract}.
+ * The keys of the circuits exported from {@link NotetakerContract}.
  *
  * @public
  */
-export type BBoardCircuitKeys = Exclude<keyof BBoardContract['impureCircuits'], number | symbol>;
+export type NotetakerCircuitKeys = Exclude<keyof NotetakerContract['impureCircuits'], number | symbol>;
 
 /**
- * The providers required by {@link BBoardContract}.
+ * The providers required by {@link NotetakerContract}.
  *
  * @public
  */
-export type BBoardProviders = MidnightProviders<BBoardCircuitKeys, PrivateStateId, BBoardPrivateState>;
+export type NotetakerProviders = MidnightProviders<NotetakerCircuitKeys, PrivateStateId, NotetakerPrivateState>;
 
 /**
- * A {@link BBoardContract} that has been deployed to the network.
+ * A {@link NotetakerContract} that has been deployed to the network.
  *
  * @public
  */
-export type DeployedBBoardContract = FoundContract<BBoardContract>;
+export type DeployedNotetakerContract = FoundContract<NotetakerContract>;
 
 /**
  * A type that represents the derived combination of public (or ledger), and private state.
+ *
+ * @public
  */
-export type BBoardDerivedState = {
-  readonly state: State;
+export type NotetakerDerivedState = {
+  /** Whether the note slot is currently occupied. */
+  readonly status: NoteStatus;
+  /** Monotonically-increasing sequence counter (public). */
   readonly sequence: bigint;
-  readonly message: string | undefined;
-
+  /** The note title stored on-chain (public). */
+  readonly title: string | undefined;
   /**
-   * A readonly flag that determines if the current message was posted by the current user.
+   * A readonly flag that determines if the current note was written by the current user.
    *
    * @remarks
-   * The `owner` property of the public (or ledger) state is the public key of the message owner, while
-   * the `secretKey` property of {@link BBoardPrivateState} is the secret key of the current user. If
-   * `owner` corresponds to the public key derived from `secretKey`, then `isOwner` is `true`.
+   * The `owner` property of the public (or ledger) state is the public key hash of the note owner,
+   * while the `secretKey` property of {@link NotetakerPrivateState} is the secret key of the
+   * current user. If `owner` corresponds to the public key hash derived from `secretKey`,
+   * then `isOwner` is `true`.
    */
   readonly isOwner: boolean;
 };
-
-// TODO: for some reason I needed to include "@midnight-ntwrk/wallet-sdk-address-format": "1.0.0-rc.1", should we bump in to rc-2 ?

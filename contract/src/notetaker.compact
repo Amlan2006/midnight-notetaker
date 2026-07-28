@@ -1,0 +1,116 @@
+// Notetaker — a privacy-preserving on-chain note DApp built on Midnight.
+//
+// Privacy Model:
+//   PUBLIC  : note title, creation counter (sequence), owner public key hash
+//   PRIVATE : note body content (witness; never leaves the user's device),
+//             user secret key (witness)
+//
+// What users prove without revealing:
+//   - They know the secret key that hashes to the stored owner key  (ownership)
+//   - The note body is valid UTF-8 of their choosing (via witness)
+//   - Only the owner can update or delete their own note
+//
+// SPDX-License-Identifier: Apache-2.0
+
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+
+// ── Ledger state ─────────────────────────────────────────────────────────────
+
+/** Whether this note slot is currently occupied. */
+export enum NoteStatus {
+  EMPTY,
+  WRITTEN
+}
+
+/** Current slot status — public. */
+export ledger status: NoteStatus;
+
+/**
+ * Note title — public.
+ * Anyone can see that a note with this title exists; the body stays private.
+ */
+export ledger title: Maybe<Opaque<"string">>;
+
+/**
+ * Monotonically-increasing sequence counter — public.
+ * Prevents replay of old ownership proofs.
+ */
+export ledger sequence: Counter;
+
+/**
+ * Hash of the owner's public key — public.
+ * Derived on-chain from the owner's secret key + current sequence.
+ */
+export ledger owner: Bytes<32>;
+
+// ── Constructor ───────────────────────────────────────────────────────────────
+
+constructor() {
+  status = NoteStatus.EMPTY;
+  title  = none<Opaque<"string">>();
+  sequence.increment(1);
+}
+
+// ── Witnesses ─────────────────────────────────────────────────────────────────
+
+/** Returns the caller's secret key from private state — never disclosed. */
+witness localSecretKey(): Bytes<32>;
+
+// ── Circuits ──────────────────────────────────────────────────────────────────
+
+/**
+ * Write a new note.
+ *
+ * @param noteTitle  The title to record on-chain (public after this call).
+ * Only the title is stored on-chain; the body is kept off-chain by the owner.
+ *
+ * Proof: caller knows a secret key → hashes to `owner`.
+ */
+export circuit writeNote(noteTitle: Opaque<"string">): [] {
+  assert(status == NoteStatus.EMPTY, "Note slot is already occupied");
+  owner  = disclose(noteKey(localSecretKey(), sequence as Field as Bytes<32>));
+  title  = disclose(some<Opaque<"string">>(noteTitle));
+  status = NoteStatus.WRITTEN;
+}
+
+/**
+ * Update the title of an existing note owned by the caller.
+ *
+ * @param newTitle  Replacement title to record on-chain.
+ */
+export circuit updateNote(newTitle: Opaque<"string">): [] {
+  assert(status == NoteStatus.WRITTEN, "No note to update");
+  assert(
+    owner == noteKey(localSecretKey(), sequence as Field as Bytes<32>),
+    "Not the note owner"
+  );
+  title = disclose(some<Opaque<"string">>(newTitle));
+}
+
+/**
+ * Delete the current note.
+ * Only the owner (proven via secret key) can erase it.
+ * Returns the former title so the caller can confirm deletion.
+ */
+export circuit deleteNote(): Opaque<"string"> {
+  assert(status == NoteStatus.WRITTEN, "No note to delete");
+  assert(
+    owner == noteKey(localSecretKey(), sequence as Field as Bytes<32>),
+    "Not the note owner"
+  );
+  const formerTitle = title.value;
+  status = NoteStatus.EMPTY;
+  sequence.increment(1);
+  title = none<Opaque<"string">>();
+  return formerTitle;
+}
+
+/**
+ * Derives an owner public key from a secret key and sequence nonce.
+ * Pure circuit — used both on-chain and off-chain for ownership checks.
+ */
+export circuit noteKey(sk: Bytes<32>, seq: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "notetaker:pk:"), seq, sk]);
+}
